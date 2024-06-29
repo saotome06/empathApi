@@ -6,8 +6,9 @@ import pydub
 
 app = Flask(__name__)
 
-apikey = os.getenv('EMPATH_API_KEY')
-url = os.getenv('EMPATH_URL')
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
 def convert_to_wav(file_path):
     # ファイルの拡張子を取得
@@ -23,25 +24,39 @@ def convert_to_wav(file_path):
     audio.export(wav_file_path, format="wav")
 
     return wav_file_path
-
 @app.route('/run-script', methods=['POST'])
 def upload_file_to_chunk_endpoint():
-    file_path = request.json.get('file_path')
-    file_path = convert_to_wav(file_path)
-    # ファイルのMIMEタイプを推測
-    mime_type, _ = mimetypes.guess_type(file_path)
-    if mime_type is None:
-        mime_type = "application/octet-stream"
+    apikey = os.getenv('EMPATH_API_KEY')
+    if apikey is None:
+        raise ValueError('EMPATH_API_KEY is not set')
+    url = os.getenv('EMPATH_URL')
+    try:
+        # ファイルデータを受け取る
+        file_data = request.data
 
-    headers = {"ApiKey": apikey}
-    files = {"file": (os.path.basename(file_path), open(file_path, "rb"), mime_type)}
+        # サーバー上に保存するためのパス
+        save_path = os.path.join("uploads", "received_audio.wav")
+        with open(save_path, "wb") as dest_file:
+            dest_file.write(file_data)
 
-    response = requests.post(url, files=files, headers=headers)
+        wav_file_path = convert_to_wav(save_path)
 
-    if response.status_code == 200:
-        return response.text
-    else:
-        return response.text, response.status_code
+        # ファイルのMIMEタイプを推測
+        mime_type = "audio/wav"  # 例としてwav形式を指定
+
+        headers = {"ApiKey": apikey}  # 必要に応じてAPIキーを設定
+        files = {"file": (os.path.basename(wav_file_path), open(wav_file_path, "rb"), mime_type)}
+
+        # リクエストを送信
+        response = requests.post(url, files=files, headers=headers)
+
+        if response.status_code == 200:
+            return response.text
+        else:
+            return response.text, response.status_code
+
+    except Exception as e:
+        return jsonify({"error": f"Error processing file: {str(e)}"}), 400
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
