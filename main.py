@@ -1,14 +1,29 @@
+from supabase import create_client, Client
 import requests
 from flask import Flask, request, jsonify
 import os
 import mimetypes
 import pydub
+import json
 
 app = Flask(__name__)
+
+SUPABASE_KEY=os.getenv('SUPABASE_KEY')
+SUPABASE_URL=os.getenv('SUPABASE_URL')
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 UPLOAD_FOLDER = 'uploads'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
+
+def extract_emotion(response_text):
+    # レスポンスをJSONオブジェクトに変換
+    response_json = json.loads(response_text)
+
+    # "talkUnits" の各要素から "emotion" を抽出
+    emotions = [unit["emotion"] for unit in response_json["talkUnits"]]
+
+    return emotions[0]
 
 def convert_to_wav(file_path):
     # ファイルの拡張子を取得
@@ -24,6 +39,35 @@ def convert_to_wav(file_path):
     audio.export(wav_file_path, format="wav")
 
     return wav_file_path
+
+def update_empath_result(emotions, user_email):
+    # ユーザーの現在の感情データを取得する
+    empath_result_log_response = (
+        supabase.table("users")
+        .select("empath_result_log")
+        .eq("user_email", user_email)
+        .execute()
+    )
+    current_emotions = empath_result_log_response.data[0]['empath_result_log']
+    if current_emotions is None:
+        current_emotions = []
+    # 現在の感情データに新しい感情データを追加する
+    current_emotions.append(emotions)
+    # レコードを更新する
+    response = (
+        supabase.table("users")
+        .update({"empath_result_log": current_emotions})
+        .eq("user_email", user_email)
+        .execute()
+    )
+    empath_response = (
+        supabase.table("users")
+        .update({"empath_response": emotions})
+        .eq("user_email", user_email)
+        .execute()
+    )
+    return response
+
 @app.route('/run-script', methods=['POST'])
 def upload_file_to_chunk_endpoint():
     apikey = os.getenv('EMPATH_API_KEY')
@@ -32,7 +76,10 @@ def upload_file_to_chunk_endpoint():
     url = os.getenv('EMPATH_URL')
     try:
         # ファイルデータを受け取る
-        file_data = request.data
+        user_email = request.form.get('email')
+        file = request.files['file']
+        file_data = file.read()
+        # file_data = request.data
 
         # サーバー上に保存するためのパス
         save_path = os.path.join("uploads", "received_audio.wav")
@@ -49,6 +96,8 @@ def upload_file_to_chunk_endpoint():
 
         # リクエストを送信
         response = requests.post(url, files=files, headers=headers)
+        emotions = extract_emotion(response.text)
+        update_empath_result(emotions, user_email)
 
         if response.status_code == 200:
             return response.text
