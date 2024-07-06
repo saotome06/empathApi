@@ -5,6 +5,7 @@ import os
 import mimetypes
 import pydub
 import json
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -41,6 +42,12 @@ def convert_to_wav(file_path):
     return wav_file_path
 
 def update_empath_result(emotions, user_email):
+    # タイムスタンプを取得する
+    timestamp = datetime.utcnow().isoformat()
+    
+    # emotionsにタイムスタンプを追加する
+    emotions_with_timestamp = {**emotions, "timestamp": timestamp}
+
     # ユーザーの現在の感情データを取得する
     empath_result_log_response = (
         supabase.table("users")
@@ -52,7 +59,7 @@ def update_empath_result(emotions, user_email):
     if current_emotions is None:
         current_emotions = []
     # 現在の感情データに新しい感情データを追加する
-    current_emotions.append(emotions)
+    current_emotions.append(emotions_with_timestamp)
     # レコードを更新する
     response = (
         supabase.table("users")
