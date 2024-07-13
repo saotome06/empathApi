@@ -6,6 +6,7 @@ import mimetypes
 import pydub
 import json
 from datetime import datetime
+import pytz
 
 app = Flask(__name__)
 
@@ -43,7 +44,9 @@ def convert_to_wav(file_path):
 
 def update_empath_result(emotions, user_email):
     # タイムスタンプを取得する
-    timestamp = datetime.utcnow().isoformat()
+    utc_now = datetime.utcnow()
+    jst_now = utc_now.astimezone(pytz.timezone('Asia/Tokyo'))
+    timestamp = jst_now.isoformat()
     
     # emotionsにタイムスタンプを追加する
     emotions_with_timestamp = {**emotions, "timestamp": timestamp}
@@ -67,12 +70,12 @@ def update_empath_result(emotions, user_email):
         .eq("user_email", user_email)
         .execute()
     )
-    empath_response = (
-        supabase.table("users")
-        .update({"empath_response": emotions})
-        .eq("user_email", user_email)
-        .execute()
-    )
+    # empath_response = (
+    #     supabase.table("users")
+    #     .update({"empath_response": emotions})
+    #     .eq("user_email", user_email)
+    #     .execute()
+    # )
     return response
 
 @app.route('/run-script', methods=['POST'])
